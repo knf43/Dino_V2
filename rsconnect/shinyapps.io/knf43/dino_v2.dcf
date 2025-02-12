@@ -1,0 +1,12 @@
+name: dino_v2
+title:
+username: knf43
+account: knf43
+server: shinyapps.io
+hostUrl: https://api.shinyapps.io/v1
+appId: 13972298
+bundleId: 9785837
+url: https://knf43.shinyapps.io/dino_v2/
+version: 1
+asMultiple: FALSE
+asStatic: FALSE

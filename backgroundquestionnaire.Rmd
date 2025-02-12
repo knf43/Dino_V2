@@ -1,0 +1,154 @@
+---
+title: "Background Questionnaire"
+output: html_document
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+library(shiny)
+library(future)
+library(git2r)
+
+plan(multisession)  # Enable background processing
+
+# Function to save responses locally
+save_response <- function(data) {
+  file_path <- "responses.csv"
+  
+  # Check if file exists
+  if (!file.exists(file_path)) {
+    write.csv(data, file_path, row.names = FALSE)
+  } else {
+    write.table(data, file_path, sep = ",", col.names = FALSE, 
+                row.names = FALSE, append = TRUE)
+  }
+}
+
+# Function to push responses to GitHub
+push_to_github <- function() {
+  repo <- repository(".")  # Current repo
+  add(repo, "responses.csv")  # Stage file
+  commit(repo, "Updated questionnaire responses")  # Commit changes
+  push(repo, "origin", "refs/heads/main")  # Push to remote
+}
+
+
+
+ui <- fluidPage(
+  titlePanel("Background Questionnaire"),
+  
+  # Questions
+  textInput("name", "What is your name?", ""),
+  textInput("instructor", "What is your instructor's name?", ""),
+  textInput("email", "What is your email?", ""),
+  numericInput("age", "How old are you?", value = NA, min = 18, max = 100),
+  
+  selectInput("gender", "What is your gender?", 
+              choices = c("Male", "Female", "Other")),
+  
+  radioButtons("immigration_status", "Have you immigrated to the USA?",
+               choices = c("Yes", "No"), inline = TRUE),
+  conditionalPanel(
+    condition = "input.immigration_status == 'Yes'",
+    dateInput("immigration_date", "Date of immigration to the USA:", value = Sys.Date())
+  ),
+  
+  numericInput("age_spanish", "At what age did you begin learning Spanish?", 
+               value = NA, min = 0, max = 100),
+  
+  textInput("time_country", "Time spent in a country where Spanish is spoken (years, months):", ""),
+  textInput("time_family", "Time spent in a family where Spanish is spoken (years, months):", ""),
+  textInput("time_school", "Time spent in a school or workplace where Spanish is spoken (years, months):", ""),
+  
+  h4(HTML("Rate your proficiency in Spanish:")),
+  p("0 = Not Proficient"),
+  p("5 = Somewhat Proficient"),
+  p("10 = Highly Proficient"),
+  sliderInput("speak", HTML("<b>Speaking</b> Spanish"), 0, 10, 5),
+  sliderInput("understand", HTML("<b>Understanding</b> Spanish"), 0, 10, 5),
+  sliderInput("read", HTML("<b>Reading</b> Spanish"), 0, 10, 5),
+  
+  h4(HTML("Please rate to what extent you are <b>currently</b> exposed to Spanish in the following contexts:")),
+  p("0 = Never"),
+  p("5 = Half of the Time"),
+  p("10 = Always"),
+  
+  sliderInput("friends", "Interacting with friends", 0, 10, 5),
+  sliderInput("family", "Interacting with family", 0, 10, 5),
+  sliderInput("reading", "Reading", 0, 10, 5),
+  sliderInput("apps", "Language apps/websites/self-instruction", 0, 10, 5),
+  sliderInput("tv", "Watching TV", 0, 10, 5),
+  sliderInput("radio", "Listening to radio/music", 0, 10, 5),
+  sliderInput("work_school", "At work/school", 0, 10, 5),
+  
+  textInput("languages_acquisition", "List all the languages you know in order of acquisition:", ""),
+  textInput("languages_dominance", "List all the languages you know in order of dominance:", ""),
+  
+  actionButton("submit", "Submit"),
+  textOutput("confirmation")
+)
+
+
+
+server <- function(input, output, session) {
+  observeEvent(input$submit, {
+    
+    # Show confirmation message before processing
+    output$confirmation <- renderText("✅ Your response is being recorded...")
+    
+    future({
+      tryCatch({
+        # Compute self-reported proficiency and language use averages
+        proficiency_avg <- mean(c(input$speak, input$understand, input$read))
+        language_use_avg <- mean(c(input$friends, input$family, input$reading, 
+                                   input$apps, input$tv, input$radio, input$work_school))
+
+        # Create Data Frame
+        response <- data.frame(
+          Name = input$name,
+          Instructor = input$instructor,
+          Email = input$email,
+          Age = input$age,
+          Gender = input$gender,
+          Immigration_Status = input$immigration_status,
+          Immigration_Date = ifelse(input$immigration_status == "Yes", as.character(input$immigration_date), "N/A"),
+          Age_Spanish = input$age_spanish,
+          Time_Country = input$time_country,
+          Time_Family = input$time_family,
+          Time_School = input$time_school,
+          Speak_Spanish = input$speak,
+          Understand_Spanish = input$understand,
+          Read_Spanish = input$read,
+          Proficiency_Avg = round(proficiency_avg, 2),
+          Friends_Exposure = input$friends,
+          Family_Exposure = input$family,
+          Reading_Exposure = input$reading,
+          Apps_Exposure = input$apps,
+          TV_Exposure = input$tv,
+          Radio_Exposure = input$radio,
+          Work_School_Exposure = input$work_school,
+          Language_Use_Avg = round(language_use_avg, 2),
+          Languages_Acquisition = input$languages_acquisition,
+          Languages_Dominance = input$languages_dominance,
+          Timestamp = format(Sys.time(), "%Y-%m-%d %H:%M:%S"),
+          stringsAsFactors = FALSE
+        )
+
+        # Save Response to CSV
+        save_response(response)
+        
+        # Push Updated CSV to GitHub
+        push_to_github()
+
+        output$confirmation <- renderText("✅ Response recorded and synced to GitHub!")
+
+      }, error = function(e) {
+        output$confirmation <- renderText("❌ Error saving response.")
+      })
+    })
+  })
+}
+
+
+shinyApp(ui, server)
+
